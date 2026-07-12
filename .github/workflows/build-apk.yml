@@ -39,15 +39,35 @@ jobs:
         run: |
           if [ ! -d "android" ]; then npx cap add android; fi
 
+      - name: Configure Firebase Cloud Messaging (FCM)
+        run: |
+          if [ -f google-services.json ]; then
+            cp google-services.json android/app/google-services.json
+            echo "google-services.json скопирован"
+          else
+            echo "!!! google-services.json НЕ найден в репозитории — пуши НЕ заработают"
+          fi
+          ROOT_GRADLE=android/build.gradle
+          if [ -f "$ROOT_GRADLE" ] && ! grep -q "com.google.gms:google-services" "$ROOT_GRADLE"; then
+            sed -i 's#dependencies {#dependencies {\n        classpath "com.google.gms:google-services:4.4.2"#' "$ROOT_GRADLE"
+            echo "classpath google-services добавлен"
+          fi
+          APP_GRADLE=android/app/build.gradle
+          if [ -f "$APP_GRADLE" ] && ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
+            echo "" >> "$APP_GRADLE"
+            echo "apply plugin: 'com.google.gms.google-services'" >> "$APP_GRADLE"
+            echo "плагин google-services применён"
+          fi
+
       - name: Add microphone & audio permissions to manifest
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if [ -f "$MANIFEST" ]; then
             if ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
-              sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$MANIFEST"
-              echo "RECORD_AUDIO добавлен в манифест"
+              sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$MANIFEST"
+              echo "Разрешения добавлены в манифест"
             else
-              echo "RECORD_AUDIO уже есть"
+              echo "Разрешения уже есть"
             fi
           fi
 
@@ -58,14 +78,14 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Use fixed debug keystore (стабильная подпись для обновлений)
+      - name: Use fixed debug keystore
         run: |
           mkdir -p ~/.android
           if [ -f debug.keystore ]; then
             cp debug.keystore ~/.android/debug.keystore
             echo "Фиксированный debug.keystore установлен"
           else
-            echo "debug.keystore не найден в репозитории — будет случайная подпись"
+            echo "debug.keystore не найден — будет случайная подпись"
           fi
 
       - name: Grant execute permission for gradlew
