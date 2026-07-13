@@ -41,17 +41,20 @@ jobs:
 
       - name: Configure Firebase Cloud Messaging (FCM)
         run: |
+          # положить google-services.json в android/app
           if [ -f google-services.json ]; then
             cp google-services.json android/app/google-services.json
             echo "google-services.json скопирован"
           else
             echo "!!! google-services.json НЕ найден в репозитории — пуши НЕ заработают"
           fi
+          # classpath google-services в корневой build.gradle
           ROOT_GRADLE=android/build.gradle
           if [ -f "$ROOT_GRADLE" ] && ! grep -q "com.google.gms:google-services" "$ROOT_GRADLE"; then
             sed -i 's#dependencies {#dependencies {\n        classpath "com.google.gms:google-services:4.4.2"#' "$ROOT_GRADLE"
             echo "classpath google-services добавлен"
           fi
+          # применить плагин в app/build.gradle
           APP_GRADLE=android/app/build.gradle
           if [ -f "$APP_GRADLE" ] && ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
             echo "" >> "$APP_GRADLE"
@@ -64,28 +67,53 @@ jobs:
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if [ -f "$MANIFEST" ]; then
             if ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
-              sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$MANIFEST"
-              echo "Разрешения добавлены в манифест"
+              sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$MANIFEST"
+              echo "RECORD_AUDIO добавлен в манифест"
             else
-              echo "Разрешения уже есть"
+              echo "RECORD_AUDIO уже есть"
             fi
+          fi
+
+      - name: Add app permissions to manifest (contacts, location, files, notifications)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            add_perm() {
+              if ! grep -q "$1" "$MANIFEST"; then
+                sed -i "s#<application#<uses-permission android:name=\"$1\" />\n    <application#" "$MANIFEST"
+                echo "added $1"
+              else
+                echo "$1 already present"
+              fi
+            }
+            add_perm android.permission.READ_CONTACTS
+            add_perm android.permission.ACCESS_FINE_LOCATION
+            add_perm android.permission.ACCESS_COARSE_LOCATION
+            add_perm android.permission.POST_NOTIFICATIONS
+            add_perm android.permission.READ_MEDIA_IMAGES
+            add_perm android.permission.READ_MEDIA_VIDEO
+            add_perm android.permission.READ_EXTERNAL_STORAGE
           fi
 
       - name: Configure dynamic app icons
         run: |
           if [ -f setup_icons.py ]; then python3 setup_icons.py; else echo "setup_icons.py нет — пропускаю"; fi
 
+      - name: Configure fullscreen incoming call (native)
+        run: |
+          if [ -f setup_calls.py ]; then python3 setup_calls.py; else echo "setup_calls.py нет — пропускаю"; fi
+
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Use fixed debug keystore
+      - name: Use fixed debug keystore (стабильная подпись для обновлений)
         run: |
           mkdir -p ~/.android
           if [ -f debug.keystore ]; then
             cp debug.keystore ~/.android/debug.keystore
             echo "Фиксированный debug.keystore установлен"
           else
-            echo "debug.keystore не найден — будет случайная подпись"
+            echo "debug.keystore не найден в репозитории — будет случайная подпись"
           fi
 
       - name: Grant execute permission for gradlew
